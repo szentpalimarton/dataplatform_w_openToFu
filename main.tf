@@ -31,6 +31,10 @@ resource "docker_volume" "minio_data" {
   name = "minio_data"
 }
 
+resource "docker_volume" "trino_data" {
+  name = "trino_data"
+}
+
 resource "docker_container" "zookeeper" {
   image = "confluentinc/cp-zookeeper:latest"
   name  = "zookeeper"
@@ -256,5 +260,24 @@ resource "docker_container" "trino" {
   networks_advanced {
     name = docker_network.default.name
   }
-  command = ["trino", "--server", "0.0.0.0:8080", "--catalog", "iceberg"]
+  volumes {
+    volume_name    = docker_volume.trino_data.name
+    container_path = "/etc/catalog"
+  }
+  command = [
+    "trino", 
+    "--server", "0.0.0.0:8080", 
+    "--catalog", "iceberg"
+  ]
+  provisioner "local-exec" {
+    command = <<EOF
+cat <<EOT > iceberg.properties
+connector.name=iceberg
+iceberg.catalog.type=hive
+iceberg.catalog.warehouse=s3a://minio:9000/warehouse
+hive.metastore.uri=thrift://nessie:9083
+EOT
+docker cp iceberg.properties ${self.name}:/etc/catalog/iceberg.properties
+EOF
+  }
 }
